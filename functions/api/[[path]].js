@@ -4,7 +4,27 @@ const bad=(message,status=400)=>json({error:message},status);
 const hex=a=>Array.from(new Uint8Array(a)).map(x=>x.toString(16).padStart(2,'0')).join('');
 const rand=n=>{let a=new Uint8Array(n);crypto.getRandomValues(a);return hex(a)};
 const digest=async s=>hex(await crypto.subtle.digest('SHA-256',enc.encode(s)));
-const passhash=async(password,salt,iterations=210000)=>hex(await crypto.subtle.deriveBits({name:'PBKDF2',salt:Uint8Array.from(salt.match(/../g).map(x=>parseInt(x,16))),iterations,hash:'SHA-256'},await crypto.subtle.importKey('raw',enc.encode(password),'PBKDF2',false,['deriveBits']),256));
+// Cloudflare Workers caps PBKDF2 at 100,000 iterations per deriveBits call.
+// This versioned, multi-stage KDF stays within that limit while retaining 210,000
+// total rounds. Existing schema remains unchanged (users.iterations = 210000).
+const passhash=async(password,salt,iterations=210000)=>{
+  const rawSalt=Uint8Array.from(salt.match(/../g).map(x=>parseInt(x,16)));
+  let material=enc.encode(password);
+  let remaining=iterations;
+  let stage=0;
+  if(!Number.isInteger(iterations)||iterations<1||iterations>1000000)throw Error('Invalid password hashing work factor');
+  while(remaining>0){
+    const count=Math.min(100000,remaining);
+    const stageSalt=new Uint8Array(rawSalt.length+4);
+    stageSalt.set(rawSalt);
+    new DataView(stageSalt.buffer).setUint32(rawSalt.length,stage,false);
+    const key=await crypto.subtle.importKey('raw',material,'PBKDF2',false,['deriveBits']);
+    material=new Uint8Array(await crypto.subtle.deriveBits({name:'PBKDF2',salt:stageSalt,iterations:count,hash:'SHA-256'},key,256));
+    remaining-=count;
+    stage++;
+  }
+  return hex(material);
+};
 const cookie=(token,maxage)=>`cf_session=${token}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${maxage}`;
 const safeUser=u=>({id:u.id,email:u.email,full_name:u.full_name,role:u.role,status:u.status,created_at:u.created_at});
 const norm=s=>String(s??'').trim();
