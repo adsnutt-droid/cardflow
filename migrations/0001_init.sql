@@ -1,0 +1,9 @@
+CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY,email TEXT NOT NULL UNIQUE, full_name TEXT NOT NULL, password_salt TEXT NOT NULL,password_hash TEXT NOT NULL,iterations INTEGER NOT NULL DEFAULT 210000,role TEXT NOT NULL DEFAULT 'member' CHECK(role IN ('member','admin')),status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active','blocked')),created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
+CREATE TABLE IF NOT EXISTS sessions (token_hash TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,expires_at TEXT NOT NULL,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
+CREATE INDEX IF NOT EXISTS sessions_user_id ON sessions(user_id);
+CREATE TABLE IF NOT EXISTS cards (id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,label TEXT NOT NULL,issuer TEXT NOT NULL DEFAULT '',last4 TEXT NOT NULL CHECK(length(last4)=4),currency TEXT NOT NULL DEFAULT 'THB',status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active','frozen','closed')),note TEXT NOT NULL DEFAULT '',created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
+CREATE INDEX IF NOT EXISTS cards_user_id ON cards(user_id);
+CREATE TABLE IF NOT EXISTS transactions (id TEXT PRIMARY KEY,card_id TEXT NOT NULL REFERENCES cards(id) ON DELETE CASCADE,type TEXT NOT NULL CHECK(type IN ('expense','topup','refund','adjustment')),amount_minor INTEGER NOT NULL CHECK(amount_minor>=0),currency TEXT NOT NULL,merchant TEXT NOT NULL,description TEXT NOT NULL DEFAULT '',occurred_at TEXT NOT NULL,created_by TEXT NOT NULL REFERENCES users(id),created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
+CREATE INDEX IF NOT EXISTS transactions_card_id ON transactions(card_id);
+CREATE INDEX IF NOT EXISTS transactions_occurred_at ON transactions(occurred_at);
+CREATE TABLE IF NOT EXISTS audit_logs (id TEXT PRIMARY KEY,actor_id TEXT NOT NULL,action TEXT NOT NULL,entity_id TEXT NOT NULL,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
